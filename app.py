@@ -4,8 +4,6 @@ from datetime import datetime
 from xml.sax.saxutils import escape
 
 app = Flask(__name__)
-
-# Hardcoded Alpha Vantage API key
 API_KEY = "5LGQXGL2RBOLEWZK"
 
 def av_get(url):
