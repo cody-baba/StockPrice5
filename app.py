@@ -44,16 +44,22 @@ def latest_global_quote(symbol):
     }
 
 def fetch_daily(symbol, days):
+    if days <= 0:
+        return []
     url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&apikey={API_KEY}"
     data = av_get(url)
     return slice_series(data, "Time Series (Daily)", days)
 
 def fetch_weekly(symbol, weeks):
+    if weeks <= 0:
+        return []
     url = f"https://www.alphavantage.co/query?function=TIME_SERIES_WEEKLY&symbol={symbol}&apikey={API_KEY}"
     data = av_get(url)
     return slice_series(data, "Weekly Time Series", weeks)
 
 def fetch_monthly(symbol, months):
+    if months <= 0:
+        return []
     url = f"https://www.alphavantage.co/query?function=TIME_SERIES_MONTHLY&symbol={symbol}&apikey={API_KEY}"
     data = av_get(url)
     return slice_series(data, "Monthly Time Series", months)
