@@ -4,7 +4,7 @@ from datetime import datetime
 from xml.sax.saxutils import escape
 
 app = Flask(__name__)
-API_KEY = "5LGQXGL2RBOLEWZK"  # your Alpha Vantage key
+API_KEY = "5LGQXGL2RBOLEWZK"
 
 def av_get(url):
     r = requests.get(url, timeout=15)
@@ -60,29 +60,37 @@ def monthly(symbol, months=6):
     data = av_get(url)
     return slice_series(data, "Monthly Time Series", months)
 
-# --- Indicators ---
 def sma(symbol, interval="daily", time_period=10):
     url = f"https://www.alphavantage.co/query?function=SMA&symbol={symbol}&interval={interval}&time_period={time_period}&series_type=close&apikey={API_KEY}"
     data = av_get(url)
-    ts = sorted(data["Technical Analysis: SMA"].keys())[-1]
-    return {"timestamp": ts, "period": time_period, "value": data["Technical Analysis: SMA"][ts]["SMA"]}
+    series = data.get("Technical Analysis: SMA", {})
+    if not series:
+        return {"timestamp": None, "period": time_period, "value": None}
+    ts = sorted(series.keys())[-1]
+    return {"timestamp": ts, "period": time_period, "value": series[ts].get("SMA")}
 
 def rsi(symbol, interval="daily", time_period=14):
     url = f"https://www.alphavantage.co/query?function=RSI&symbol={symbol}&interval={interval}&time_period={time_period}&series_type=close&apikey={API_KEY}"
     data = av_get(url)
-    ts = sorted(data["Technical Analysis: RSI"].keys())[-1]
-    return {"timestamp": ts, "period": time_period, "value": data["Technical Analysis: RSI"][ts]["RSI"]}
+    series = data.get("Technical Analysis: RSI", {})
+    if not series:
+        return {"timestamp": None, "period": time_period, "value": None}
+    ts = sorted(series.keys())[-1]
+    return {"timestamp": ts, "period": time_period, "value": series[ts].get("RSI")}
 
 def macd(symbol, interval="daily", fastperiod=12, slowperiod=26, signalperiod=9):
     url = f"https://www.alphavantage.co/query?function=MACD&symbol={symbol}&interval={interval}&series_type=close&fastperiod={fastperiod}&slowperiod={slowperiod}&signalperiod={signalperiod}&apikey={API_KEY}"
     data = av_get(url)
-    ts = sorted(data["Technical Analysis: MACD"].keys())[-1]
-    vals = data["Technical Analysis: MACD"][ts]
+    series = data.get("Technical Analysis: MACD", {})
+    if not series:
+        return {"timestamp": None, "macd": None, "macd_signal": None, "macd_hist": None}
+    ts = sorted(series.keys())[-1]
+    vals = series[ts]
     return {
         "timestamp": ts,
-        "macd": vals["MACD"],
-        "macd_signal": vals["MACD_Signal"],
-        "macd_hist": vals["MACD_Hist"]
+        "macd": vals.get("MACD"),
+        "macd_signal": vals.get("MACD_Signal"),
+        "macd_hist": vals.get("MACD_Hist")
     }
 
 def tag(name, content):
@@ -116,9 +124,9 @@ def xml_unified(symbol, intraday_v, daily_v, weekly_v, monthly_v, sma_v, rsi_v, 
         xml.append(f'<month date="{escape(m["date"])}" open="{escape(str(m["open"]))}" high="{escape(str(m["high"]))}" low="{escape(str(m["low"]))}" close="{escape(str(m["close"]))}"/>')
     xml.append('</recentMonths>')
     xml.append('<indicators>')
-    xml.append(f'<sma period="{sma_v["period"]}" value="{escape(str(sma_v["value"]))}" timestamp="{escape(sma_v["timestamp"])}"/>')
-    xml.append(f'<rsi period="{rsi_v["period"]}" value="{escape(str(rsi_v["value"]))}" timestamp="{escape(rsi_v["timestamp"])}"/>')
-    xml.append(f'<macd timestamp="{escape(macd_v["timestamp"])}" macd="{escape(str(macd_v["macd"]))}" signal="{escape(str(macd_v["macd_signal"]))}" hist="{escape(str(macd_v["macd_hist"]))}"/>')
+    xml.append(f'<sma period="{sma_v["period"]}" value="{escape(str(sma_v["value"]))}" timestamp="{escape(str(sma_v["timestamp"]))}"/>')
+    xml.append(f'<rsi period="{rsi_v["period"]}" value="{escape(str(rsi_v["value"]))}" timestamp="{escape(str(rsi_v["timestamp"]))}"/>')
+    xml.append(f'<macd timestamp="{escape(str(macd_v["timestamp"]))}" macd="{escape(str(macd_v["macd"]))}" signal="{escape(str(macd_v["macd_signal"]))}" hist="{escape(str(macd_v["macd_hist"]))}"/>')
     xml.append('</indicators>')
     xml.append('<meta>')
     xml.append(tag("source", "Alpha Vantage"))
