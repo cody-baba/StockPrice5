@@ -14,8 +14,17 @@ def indicators(symbol: str, period: str = "3mo", interval: str = "1d"):
     """
     Returns date, symbol, close price, SMA(20), RSI(14), MACD and MACD signal line.
     """
-    ticker = yf.Ticker(symbol)
-    hist = ticker.history(period=period, interval=interval)
+    try:
+        # Use yf.download instead of Ticker().history to avoid Yahoo blocking
+        hist = yf.download(
+            tickers=symbol,
+            period=period,
+            interval=interval,
+            progress=False,
+            threads=False
+        )
+    except Exception as e:
+        return {"error": str(e), "symbol": symbol}
 
     if hist.empty:
         return {"error": "No data found", "symbol": symbol}
