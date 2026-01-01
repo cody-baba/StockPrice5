@@ -27,7 +27,8 @@ def slice_series(data, series_key, count):
             "open": row.get("1. open"),
             "high": row.get("2. high"),
             "low": row.get("3. low"),
-            "close": row.get("4. close")
+            "close": row.get("4. close"),
+            "volume": row.get("5. volume")
         })
     return result
 
@@ -40,7 +41,8 @@ def latest_global_quote(symbol):
         "open": quote.get("02. open"),
         "high": quote.get("03. high"),
         "low": quote.get("04. low"),
-        "close": quote.get("05. price")
+        "close": quote.get("05. price"),
+        "volume": quote.get("06. volume")
     }
 
 def fetch_daily(symbol, days):
@@ -62,6 +64,8 @@ def fetch_monthly(symbol, months):
         return []
     url = f"https://www.alphavantage.co/query?function=TIME_SERIES_MONTHLY&symbol={symbol}&apikey={API_KEY}"
     data = av_get(url)
+    if "Monthly Time Series" not in data:
+        return []
     return slice_series(data, "Monthly Time Series", months)
 
 def tag(name, content):
@@ -79,20 +83,21 @@ def xml_unified(symbol, latest_v, daily_v, weekly_v, monthly_v):
         tag("high", latest_v.get("high")),
         tag("low", latest_v.get("low")),
         tag("close", latest_v.get("close")),
+        tag("volume", latest_v.get("volume")),
         tag("timestamp", latest_v.get("timestamp")),
         '</latest>',
         '<recentDays>'
     ]
     for d in daily_v:
-        xml.append(f'<day date="{escape(d["date"])}" open="{escape(str(d["open"]))}" high="{escape(str(d["high"]))}" low="{escape(str(d["low"]))}" close="{escape(str(d["close"]))}"/>')
+        xml.append(f'<day date="{escape(d["date"])}" open="{escape(str(d["open"]))}" high="{escape(str(d["high"]))}" low="{escape(str(d["low"]))}" close="{escape(str(d["close"]))}" volume="{escape(str(d["volume"]))}"/>')
     xml.append('</recentDays>')
     xml.append('<recentWeeks>')
     for w in weekly_v:
-        xml.append(f'<week date="{escape(w["date"])}" open="{escape(str(w["open"]))}" high="{escape(str(w["high"]))}" low="{escape(str(w["low"]))}" close="{escape(str(w["close"]))}"/>')
+        xml.append(f'<week date="{escape(w["date"])}" open="{escape(str(w["open"]))}" high="{escape(str(w["high"]))}" low="{escape(str(w["low"]))}" close="{escape(str(w["close"]))}" volume="{escape(str(w["volume"]))}"/>')
     xml.append('</recentWeeks>')
     xml.append('<recentMonths>')
     for m in monthly_v:
-        xml.append(f'<month date="{escape(m["date"])}" open="{escape(str(m["open"]))}" high="{escape(str(m["high"]))}" low="{escape(str(m["low"]))}" close="{escape(str(m["close"]))}"/>')
+        xml.append(f'<month date="{escape(m["date"])}" open="{escape(str(m["open"]))}" high="{escape(str(m["high"]))}" low="{escape(str(m["low"]))}" close="{escape(str(m["close"]))}" volume="{escape(str(m["volume"]))}"/>')
     xml.append('</recentMonths>')
     xml.append('<meta>')
     xml.append(tag("source", "Alpha Vantage"))
