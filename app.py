@@ -14,17 +14,9 @@ def av_get(url):
         raise ValueError(data.get("Note") or data.get("Error Message"))
     return data
 
-def latest_from_series(data, series_key):
-    ts = data.get(series_key, {})
-    if not ts:
-        return None, None, None, None, None
-    latest_ts = sorted(ts.keys())[-1]
-    row = ts[latest_ts]
-    return latest_ts, row.get("1. open"), row.get("2. high"), row.get("3. low"), row.get("4. close")
-
 def slice_series(data, series_key, count):
     ts = data.get(series_key, {})
-    if not ts:
+    if not ts or count <= 0:
         return []
     sorted_keys = sorted(ts.keys(), reverse=True)[:count]
     result = []
@@ -39,76 +31,49 @@ def slice_series(data, series_key, count):
         })
     return result
 
-def intraday(symbol, interval="5min"):
-    url = f"https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol={symbol}&interval={interval}&apikey={API_KEY}"
+def latest_global_quote(symbol):
+    url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={symbol}&apikey={API_KEY}"
     data = av_get(url)
-    ts, o, h, l, c = latest_from_series(data, f"Time Series ({interval})")
-    return {"timestamp": ts, "open": o, "high": h, "low": l, "close": c}
+    quote = data.get("Global Quote", {})
+    return {
+        "timestamp": quote.get("07. latest trading day"),
+        "open": quote.get("02. open"),
+        "high": quote.get("03. high"),
+        "low": quote.get("04. low"),
+        "close": quote.get("05. price")
+    }
 
-def daily(symbol, days=5):
+def fetch_daily(symbol, days):
     url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&apikey={API_KEY}"
     data = av_get(url)
     return slice_series(data, "Time Series (Daily)", days)
 
-def weekly(symbol, weeks=4):
+def fetch_weekly(symbol, weeks):
     url = f"https://www.alphavantage.co/query?function=TIME_SERIES_WEEKLY&symbol={symbol}&apikey={API_KEY}"
     data = av_get(url)
     return slice_series(data, "Weekly Time Series", weeks)
 
-def monthly(symbol, months=6):
+def fetch_monthly(symbol, months):
     url = f"https://www.alphavantage.co/query?function=TIME_SERIES_MONTHLY&symbol={symbol}&apikey={API_KEY}"
     data = av_get(url)
     return slice_series(data, "Monthly Time Series", months)
-
-def sma(symbol, interval="daily", time_period=10):
-    url = f"https://www.alphavantage.co/query?function=SMA&symbol={symbol}&interval={interval}&time_period={time_period}&series_type=close&apikey={API_KEY}"
-    data = av_get(url)
-    series = data.get("Technical Analysis: SMA", {})
-    if not series:
-        return {"timestamp": None, "period": time_period, "value": None}
-    ts = sorted(series.keys())[-1]
-    return {"timestamp": ts, "period": time_period, "value": series[ts].get("SMA")}
-
-def rsi(symbol, interval="daily", time_period=14):
-    url = f"https://www.alphavantage.co/query?function=RSI&symbol={symbol}&interval={interval}&time_period={time_period}&series_type=close&apikey={API_KEY}"
-    data = av_get(url)
-    series = data.get("Technical Analysis: RSI", {})
-    if not series:
-        return {"timestamp": None, "period": time_period, "value": None}
-    ts = sorted(series.keys())[-1]
-    return {"timestamp": ts, "period": time_period, "value": series[ts].get("RSI")}
-
-def macd(symbol, interval="daily", fastperiod=12, slowperiod=26, signalperiod=9):
-    url = f"https://www.alphavantage.co/query?function=MACD&symbol={symbol}&interval={interval}&series_type=close&fastperiod={fastperiod}&slowperiod={slowperiod}&signalperiod={signalperiod}&apikey={API_KEY}"
-    data = av_get(url)
-    series = data.get("Technical Analysis: MACD", {})
-    if not series:
-        return {"timestamp": None, "macd": None, "macd_signal": None, "macd_hist": None}
-    ts = sorted(series.keys())[-1]
-    vals = series[ts]
-    return {
-        "timestamp": ts,
-        "macd": vals.get("MACD"),
-        "macd_signal": vals.get("MACD_Signal"),
-        "macd_hist": vals.get("MACD_Hist")
-    }
 
 def tag(name, content):
     if content is None:
         return f"<{name}/>"
     return f"<{name}>{escape(str(content))}</{name}>"
 
-def xml_unified(symbol, intraday_v, daily_v, weekly_v, monthly_v, sma_v, rsi_v, macd_v):
+def xml_unified(symbol, latest_v, daily_v, weekly_v, monthly_v):
     xml = [
         '<?xml version="1.0" encoding="UTF-8"?>',
-        '<hkStock>',
+        '<stock>',
         tag("symbol", symbol),
         '<latest>',
-        tag("open", intraday_v["open"]),
-        tag("high", intraday_v["high"]),
-        tag("low", intraday_v["low"]),
-        tag("close", intraday_v["close"]),
-        tag("timestamp", intraday_v["timestamp"]),
+        tag("open", latest_v.get("open")),
+        tag("high", latest_v.get("high")),
+        tag("low", latest_v.get("low")),
+        tag("close", latest_v.get("close")),
+        tag("timestamp", latest_v.get("timestamp")),
         '</latest>',
         '<recentDays>'
     ]
@@ -123,33 +88,25 @@ def xml_unified(symbol, intraday_v, daily_v, weekly_v, monthly_v, sma_v, rsi_v, 
     for m in monthly_v:
         xml.append(f'<month date="{escape(m["date"])}" open="{escape(str(m["open"]))}" high="{escape(str(m["high"]))}" low="{escape(str(m["low"]))}" close="{escape(str(m["close"]))}"/>')
     xml.append('</recentMonths>')
-    xml.append('<indicators>')
-    xml.append(f'<sma period="{sma_v["period"]}" value="{escape(str(sma_v["value"]))}" timestamp="{escape(str(sma_v["timestamp"]))}"/>')
-    xml.append(f'<rsi period="{rsi_v["period"]}" value="{escape(str(rsi_v["value"]))}" timestamp="{escape(str(rsi_v["timestamp"]))}"/>')
-    xml.append(f'<macd timestamp="{escape(str(macd_v["timestamp"]))}" macd="{escape(str(macd_v["macd"]))}" signal="{escape(str(macd_v["macd_signal"]))}" hist="{escape(str(macd_v["macd_hist"]))}"/>')
-    xml.append('</indicators>')
     xml.append('<meta>')
     xml.append(tag("source", "Alpha Vantage"))
     xml.append(tag("generatedAt", datetime.utcnow().isoformat() + "Z"))
     xml.append('</meta>')
-    xml.append('</hkStock>')
+    xml.append('</stock>')
     return "\n".join(xml)
 
-@app.route("/hk/quote.xml", methods=["GET"])
+@app.route("/quote.xml", methods=["GET"])
 def unified_xml():
-    symbol = request.args.get("symbol", "0700.HK")
+    symbol = request.args.get("symbol", "TSLA")
     days = int(request.args.get("days", "5"))
     weeks = int(request.args.get("weeks", "4"))
     months = int(request.args.get("months", "6"))
     try:
-        intraday_v = intraday(symbol)
-        daily_v = daily(symbol, days)
-        weekly_v = weekly(symbol, weeks)
-        monthly_v = monthly(symbol, months)
-        sma_v = sma(symbol)
-        rsi_v = rsi(symbol)
-        macd_v = macd(symbol)
-        xml = xml_unified(symbol, intraday_v, daily_v, weekly_v, monthly_v, sma_v, rsi_v, macd_v)
+        latest_v = latest_global_quote(symbol)
+        daily_v = fetch_daily(symbol, days)
+        weekly_v = fetch_weekly(symbol, weeks)
+        monthly_v = fetch_monthly(symbol, months)
+        xml = xml_unified(symbol, latest_v, daily_v, weekly_v, monthly_v)
         return Response(xml, mimetype="application/xml")
     except Exception as e:
         err = f'<?xml version="1.0" encoding="UTF-8"?><error>{escape(str(e))}</error>'
