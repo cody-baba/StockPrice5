@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Query
 import requests
-from typing import Optional, List
-from datetime import datetime
+import xml.etree.ElementTree as ET
+from typing import Optional
 
 app = FastAPI()
 
@@ -17,42 +17,41 @@ def fetch_indicator(function: str, symbol: str, interval: str = "daily", **kwarg
         "series_type": "close"
     }
     params.update(kwargs)
-    r = requests.get(BASE_URL, params=params)
-    r.raise_for_status()
-    return r.json()
+    response = requests.get(BASE_URL, params=params)
+    response.raise_for_status()
+    return response.json()
 
-@app.get("/indicators")
+@app.get("/indicators", response_class=None)
 def get_indicators(
-    symbol: str = Query(..., description="Stock symbol, e.g. IBM, AAPL, 0700.HK"),
-    interval: str = Query("daily", description="Interval: daily, weekly, etc."),
+    symbol: str = Query(..., description="Stock symbol, e.g. TSLA, AAPL, 0700.HK"),
+    interval: str = Query("daily", description="Time interval: daily, weekly, etc."),
     days: Optional[int] = Query(1, description="Number of latest days to return")
 ):
-    # Fetch all three indicators
-    sma = fetch_indicator("SMA", symbol, interval, time_period=10)
-    macd = fetch_indicator("MACD", symbol, interval)
-    rsi = fetch_indicator("RSI", symbol, interval, time_period=14)
+    # Fetch indicators
+    sma_json = fetch_indicator("SMA", symbol, interval, time_period=10)
+    macd_json = fetch_indicator("MACD", symbol, interval)
+    rsi_json = fetch_indicator("RSI", symbol, interval, time_period=14)
 
-    sma_data = sma.get("Technical Analysis: SMA", {})
-    macd_data = macd.get("Technical Analysis: MACD", {})
-    rsi_data = rsi.get("Technical Analysis: RSI", {})
+    sma_data = sma_json.get("Technical Analysis: SMA", {})
+    macd_data = macd_json.get("Technical Analysis: MACD", {})
+    rsi_data = rsi_json.get("Technical Analysis: RSI", {})
 
-    # Collect all available dates
-    all_dates = set(sma_data.keys()) & set(macd_data.keys()) & set(rsi_data.keys())
-    sorted_dates = sorted(all_dates, reverse=True)
+    # Get common dates
+    common_dates = sorted(set(sma_data) & set(macd_data) & set(rsi_data), reverse=True)
+    selected_dates = common_dates[:days]
 
-    # Limit to latest X days
-    selected_dates = sorted_dates[:days]
+    # Build XML
+    root = ET.Element("Indicators")
+    ET.SubElement(root, "Symbol").text = symbol
+    ET.SubElement(root, "Interval").text = interval
 
-    results: List[dict] = []
     for date in selected_dates:
-        results.append({
-            "date": date,
-            "stock": symbol,
-            "sma": sma_data[date]["SMA"],
-            "macd": macd_data[date]["MACD"],
-            "macd_signal": macd_data[date]["MACD_Signal"],
-            "macd_hist": macd_data[date]["MACD_Hist"],
-            "rsi": rsi_data[date]["RSI"]
-        })
+        entry = ET.SubElement(root, "Entry", date=date)
+        ET.SubElement(entry, "Stock").text = symbol
+        ET.SubElement(entry, "SMA").text = sma_data[date]["SMA"]
+        ET.SubElement(entry, "MACD").text = macd_data[date]["MACD"]
+        ET.SubElement(entry, "MACD_Signal").text = macd_data[date]["MACD_Signal"]
+        ET.SubElement(entry, "MACD_Hist").text = macd_data[date]["MACD_Hist"]
+        ET.SubElement(entry, "RSI").text = rsi_data[date]["RSI"]
 
-    return {"symbol": symbol, "interval": interval, "results": results}
+    return ET.tostring(root, encoding="unicode")
